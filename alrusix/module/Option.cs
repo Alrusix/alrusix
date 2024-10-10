@@ -9,6 +9,23 @@ namespace akron.module
 		public string Name { get; }
 		public void Execute() { }
 	}
+	public class Test : IOption
+	{
+		public ConsoleKey Key { get; } = ConsoleKey.L;
+		public string Name { get; } = "Test";
+		public override int GetHashCode() => Key.GetHashCode();
+		public override bool Equals(object? obj)
+		{
+			if (obj != null && obj is IOption)
+				return Key.GetHashCode() == obj.GetHashCode();
+			return false;
+		}
+		public void Execute()
+		{
+			DBEngine.ParseSQL("ALTER TABLE SocketLogs DROP COLUMN ID;");
+		}
+	}
+
 	public class Stop : IOption
 	{
 		public ConsoleKey Key { get; } = ConsoleKey.S;
@@ -38,10 +55,12 @@ namespace akron.module
 		public string Name { get; } = "Open AccessRecord";
 		public void Execute()
 		{
-			Program.OpenAccessLog = true;
-			Program.Options.Add(new CloseAccessRecord());
+			Program.OpenAccessLog = true;		
 			Program.Options.Remove(new OpenAccessRecord());
+			Program.Options.Add(new CloseAccessRecord());
 			Program.Options.Remove(new OpenLogs());
+			Program.Options.Add(new IncreaseWidth());
+			Program.Options.Add(new ReduceWidth());
 
 		}
 		public override int GetHashCode() => Key.GetHashCode();
@@ -54,15 +73,17 @@ namespace akron.module
 	}
 	public class CloseAccessRecord : IOption
 	{
-		public ConsoleKey Key { get; } = ConsoleKey.C;
+		public ConsoleKey Key { get; } = ConsoleKey.W;
 		public string Name { get; } = "Close AccessRecord";
 		public void Execute()
 		{
 			Program.OpenAccessLog = false;
-			Program.Options.Add(new OpenAccessRecord());
 			Program.Options.Remove(new CloseAccessRecord());
+			Program.Options.Add(new OpenAccessRecord());		
 			Program.Options.Add(new OpenLogs());
 			DBEngine.CurrentPage = 0;
+			Program.Options.Remove(new IncreaseWidth());
+			Program.Options.Remove(new ReduceWidth());
 		}
 		public override int GetHashCode() => Key.GetHashCode();
 		public override bool Equals(object? obj)
@@ -79,9 +100,12 @@ namespace akron.module
 		public void Execute()
 		{
 			Program.OpenLog = true;
-			Program.Options.Add(new CloseLogs());
 			Program.Options.Remove(new OpenLogs());
+			Program.Options.Add(new CloseLogs());
+			
 			Program.Options.Remove(new OpenAccessRecord());
+			Program.Options.Add(new IncreaseWidth());
+			Program.Options.Add(new ReduceWidth());
 		}
 		public override int GetHashCode() => Key.GetHashCode();
 		public override bool Equals(object? obj)
@@ -93,15 +117,18 @@ namespace akron.module
 	}
 	public class CloseLogs : IOption
 	{
-		public ConsoleKey Key { get; } = ConsoleKey.X;
+		public ConsoleKey Key { get; } = ConsoleKey.B;
 		public string Name { get; } = "Close Logs";
 		public void Execute()
 		{
 			Program.OpenLog = false;
-			Program.Options.Add(new OpenLogs());
 			Program.Options.Remove(new CloseLogs());
+			Program.Options.Add(new OpenLogs());
+			
 			Program.Options.Add(new OpenAccessRecord());
 			DBEngine.CurrentPage = 0;
+			Program.Options.Remove(new IncreaseWidth());
+			Program.Options.Remove(new ReduceWidth());
 		}
 		public override int GetHashCode() => Key.GetHashCode();
 		public override bool Equals(object? obj)
@@ -111,6 +138,44 @@ namespace akron.module
 			return false;
 		}
 	}
+	public class IncreaseWidth : IOption
+	{
+		public ConsoleKey Key { get; } = ConsoleKey.T;
+
+		public string Name { get; } = "Increase the width of the table";
+		public override int GetHashCode() => Key.GetHashCode();
+		public void Execute()
+		{		
+			DBEngine.MaxWidth += 1;
+			DBEngine.MinWidth += 1;
+		}
+		public override bool Equals(object? obj)
+		{
+			if (obj != null && obj is IOption)
+				return Key.GetHashCode() == obj.GetHashCode();
+			return false;
+		}
+	}
+	public class ReduceWidth : IOption
+	{
+		public ConsoleKey Key { get; } = ConsoleKey.R;
+
+		public string Name { get; } = "Reduce the table width";
+		public void Execute()
+		{
+			DBEngine.MaxWidth -= 1;
+			DBEngine.MinWidth -= 1;
+		}
+
+		public override int GetHashCode() => Key.GetHashCode();
+		public override bool Equals(object? obj)
+		{
+			if (obj != null && obj is IOption)
+				return Key.GetHashCode() == obj.GetHashCode();
+			return false;
+		}
+	}
+
 	public class UP : IOption
 	{
 		public ConsoleKey Key { get; } = ConsoleKey.U;

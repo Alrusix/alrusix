@@ -9,11 +9,11 @@ using System.Threading.Tasks;
 
 using static System.Net.Mime.MediaTypeNames;
 using static akron.SocketServer;
-
+using akronWS;
 namespace akron.module
 {
-	internal class WebSocket
-	{
+	public class WebSocket
+	{	
 		[Route("ws")]
 		public static void HandleHandshake(Socket clientSocket, string wsKey)
 		{
@@ -35,22 +35,19 @@ namespace akron.module
 				{
 					int received = clientSocket.Receive(buffer);
 					if (received == 0) break;
-
-					// 解析帧
-					int frameType = DecodeMessage(buffer.ToArray(), received, ref messageBuffer, ref opcode);
+					int frameType = DecodeMessage(buffer.ToArray(), received, ref messageBuffer, ref opcode,clientSocket);
 					switch (frameType)
 					{
-						//text
 						case 0x1:
 							string message = Encoding.UTF8.GetString(messageBuffer.ToArray());
-							logger.Log($"Received: {message}");
+							logger.Log($"Received: {message}",0);
 							messageBuffer.Clear();
 							opcode = 0;
 
-							string responseMessage = "Echo: " + message;
+							string responseMessage = message+"\r\n";
 							clientSocket.Send(EncodeMessage(responseMessage, 0x1));
 							break;
-						//binary// 暂时搁置
+						//binary // 暂时搁置
 						case 0x2:
 							messageBuffer.Clear();
 							opcode = 0;
@@ -66,17 +63,19 @@ namespace akron.module
 						case 0xA:
 							//pong							
 							break;
+						case 0xFF:
+							return;
 						default: goto http;
 					}
 				}
 				catch (SocketException ex)
 				{
-					logger.Log(ex.Message);
+					logger.Log($"ErrorCode:{ex.ErrorCode}|SocketErrorCode:{ex.SocketErrorCode}|Message:{ex.Message}|Source:{ex.Source}",2);
 					break;
 				}
 			}
 		http://baidu.com;
-			logger.Log("Client disconnected.");
+			//logger.Log("Client disconnected.");
 			clientSocket.Close();
 		}
 		// 0               1               2               3
@@ -97,15 +96,13 @@ namespace akron.module
 		//+ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
 		//|                     Payload Data continued...                 |
 		//+---------------------------------------------------------------+
-		private static int DecodeMessage(byte[] buffer, int length, ref List<byte> message, ref int _opcode)
+		private static int DecodeMessage(byte[] buffer, int length, ref List<byte> message, ref int _opcode,Socket socket)
 		{
 			bool isFinalFrame = (buffer[0] & 0x80) != 0;
 			byte opCode = (byte)(buffer[0] & 0x0F);
-
 			switch (opCode)
 			{
 				case 0x0://分片
-
 					break;
 				case 0x1: // 文本帧
 					break;
@@ -127,12 +124,12 @@ namespace akron.module
 			bool isMasked = (buffer[1] & 0x80) != 0;
 			int payloadLength = buffer[1] & 0x7F;
 			int offset = 2;
-
+			
 			if (payloadLength == 126)
 			{
 				if (length < offset + 2)
 				{
-					logger.Log("Buffer length does not match the payload length.1");
+					logger.Log("Buffer length does not match the payload length.1",0);
 					return 0x8;
 				}
 				payloadLength = buffer[2] << 8 | buffer[3];
@@ -143,7 +140,7 @@ namespace akron.module
 			{
 				if (length < offset + 8)
 				{
-					logger.Log("Buffer length does not match the payload length.2");
+					logger.Log("Buffer length does not match the payload length.2",0);
 					return 0x8;
 				}
 				//理论上可能会出现溢出，实际上不会，不管
@@ -162,11 +159,9 @@ namespace akron.module
 
 			if (length < offset + (isMasked ? 4 : 0) + payloadLength)
 			{
-				logger.Log("Buffer length does not match the payload length.3");
+				logger.Log("Buffer length does not match the payload length.3",0);
 				return 0x8;
 			}
-
-
 
 			byte[] maskingKey = new byte[4];
 			if (isMasked)
@@ -185,8 +180,19 @@ namespace akron.module
 				}
 			}
 			//暂时搁置，原路返回
-
-			message.AddRange(payloadData);
+			string Text = Encoding.UTF8.GetString(payloadData);
+			var w = Text.Split("=");
+			if (w.Length== 2 && w[0] == "name")
+			{
+				
+				WWW.ss(socket);
+				return 0xFF;
+			}
+			else
+			{
+				message.AddRange(payloadData);
+			}
+			logger.Log(Text,0);
 
 			if (!isFinalFrame && opCode == 0x0)
 			{
@@ -229,14 +235,14 @@ namespace akron.module
 
 			return frame;
 		}
-		//public enum WebSocketOpcode
-		//{
-		//	Continuation = 0x0,
-		//	Text = 0x1,
-		//	Binary = 0x2,
-		//	Close = 0x8,
-		//	Ping = 0x9,
-		//	Pong = 0xA
-		//}
+		public enum WebSocketOpcode
+		{
+			Continuation = 0x0,
+			Text = 0x1,
+			Binary = 0x2,
+			Close = 0x8,
+			Ping = 0x9,
+			Pong = 0xA
+		}
 	}
 }

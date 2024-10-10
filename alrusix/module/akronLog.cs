@@ -2,6 +2,13 @@
 using System.Collections.Concurrent;
 namespace akronLog
 {
+	public enum LogLevel
+	{
+		Info,
+		Warning,
+		Error,
+		Debug
+	}
 	public class Logger
 	{
 		private ConcurrentQueue<string> _logQueue = new ConcurrentQueue<string>();
@@ -19,11 +26,12 @@ namespace akronLog
 			string sql = @"
 		          CREATE TABLE Logs (
 					  Level System.String,
-		              Message System.String	              				  
+		              Message System.String,
+					  Time System.DateTime
 				);
 				";
 			akronDB.DBEngine.ParseSQL(sql);
-			Task.Run(() => StartLogging());
+			Task.Run(() => StartLogging());		
 		}
 		private void StartLogging()
 		{
@@ -37,7 +45,7 @@ namespace akronLog
 				_writer.Flush();
 			}
 		}
-		public  void StopLogging()
+		public void StopLogging()
 		{
 			_isLogging = false;
 			_logSignal.Set();
@@ -58,7 +66,7 @@ namespace akronLog
 				case 2: Error(message); break;
 				default: Debug(message); break;
 			}
-			string sqlQuery = $"INSERT INTO Logs ( Level,Message ) VALUES ({level},{message.Replace(",","，")})";
+			string sqlQuery = $"INSERT INTO Logs ( Level,Message,Time ) VALUES ({(LogLevel)level},{message.Replace(",","，")},{DateTime.Now.ToString("G")})";
 			akronDB.DBEngine.ParseSQL(sqlQuery);
 		}
 		//暂时搁置
