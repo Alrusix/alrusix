@@ -3,6 +3,7 @@ using akronConfig;
 using System.Collections.Concurrent;
 using akronDB;
 using akron.module;
+using System.Text;
 namespace akron
 {
 	public class Program
@@ -10,6 +11,7 @@ namespace akron
 		public static bool OpenAccessLog {  get; set; }=false;
 		public static bool OpenLog { get; set; } = false;
 		public static HashSet<IOption> Options = [
+			//new Test(),
 			new OpenAccessRecord(),
 			new OpenLogs(),
 			new Stop(),
@@ -17,11 +19,13 @@ namespace akron
 		];
 		static void Main(string[] args)
 		{
+			Console.OutputEncoding = Encoding.UTF8;
 			string dbPath = Config.Get<string>("DB:Path", "akron.adb");
 			if (!File.Exists(dbPath))
-				File.WriteAllText(dbPath, "[\r\n  {\r\n    \"Name\": \"Logs\",\r\n    \"Fields\": [\r\n      {\r\n        \"ColumnName\": \"Level\",\r\n        \"DataType\": 5,\r\n        \"Constraints\": \"\"\r\n      },\r\n      {\r\n        \"ColumnName\": \"Message\",\r\n        \"DataType\": 5,\r\n        \"Constraints\": \"\"\r\n      }\r\n    ],\r\n    \"Row\": []\r\n  },\r\n  {\r\n    \"Name\": \"SocketLogs\",\r\n    \"Fields\": [\r\n      {\r\n        \"ColumnName\": \"IPAdderss\",\r\n        \"DataType\": 5,\r\n        \"Constraints\": \"\"\r\n      },\r\n      {\r\n        \"ColumnName\": \"Method\",\r\n        \"DataType\": 5,\r\n        \"Constraints\": \"\"\r\n      },\r\n      {\r\n        \"ColumnName\": \"Url\",\r\n        \"DataType\": 5,\r\n        \"Constraints\": \"\"\r\n      },\r\n      {\r\n        \"ColumnName\": \"LastdateTime\",\r\n        \"DataType\": 8,\r\n        \"Constraints\": \"\"\r\n      },\r\n      {\r\n        \"ColumnName\": \"StatusCode\",\r\n        \"DataType\": 5,\r\n        \"Constraints\": \"\"\r\n      }\r\n    ],\r\n    \"Row\": [\r\n      {\r\n        \"IPAdderss\": \"127.0.0.1\",\r\n        \"Method\": \"GET\",\r\n        \"Url\": \"/\",\r\n        \"LastdateTime\": \"2024-10-06T22:04:51\",\r\n        \"StatusCode\": \"200 OK\"\r\n      }\r\n    ]\r\n  }\r\n]");					
+				File.WriteAllText(dbPath, "[]");//不要动这行，浪费一天时间在这了
 			SocketServer.Listener();
-			https://github.com/Alrusix/
+			/*
+			*/https://github.com/Alrusix/
 			DisplayTable();
 			Console.WriteLine();
 			foreach (var w in Options)
@@ -65,15 +69,15 @@ namespace akron
 			Console.WriteLine(@"*");
 			Console.WriteLine(@"*	version : 0.0.1	        	by : https://github.com/Alrusix/					 ");
 			Console.WriteLine(@"*");
+			
 			if (OpenAccessLog)
-				DBEngine.ShowTable("SocketLogs");
+				DBEngine.ParseSQL("SELECT * FROM SocketLogs;");
 			if (OpenLog)
-				DBEngine.ShowTable("Logs");
+				DBEngine.ParseSQL("SELECT * FROM Logs;");
 			if (Program.Options.Contains(new OpenAccessRecord()) && Program.Options.Contains(new OpenLogs()))
 			{
 				Program.Options.Remove(new UP());
-				Program.Options.Remove(new Down());
-				
+				Program.Options.Remove(new Down());				
 			}
 			Console.WriteLine();
 			Console.ForegroundColor = ConsoleColor.DarkYellow;

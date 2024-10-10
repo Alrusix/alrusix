@@ -10,6 +10,7 @@ using akronLog;
 using akronConfig;
 using  akronDB;
 using System.IO.Compression;
+using akronWS;
 /*   Author:Alrusix
 */
 /*   正在实现：REST api
@@ -96,7 +97,8 @@ namespace akron
 			listener.Bind(new IPEndPoint(IPAddress.Any, port));
 			listener.Listen(backlog);
 			Check();
-			Task.Run(() => AcceptHttpRequest(cancellationTokenSource.Token));			
+			Task.Run(() => AcceptHttpRequest(cancellationTokenSource.Token));
+			WWW.Start();
 		}
 		public static async Task AcceptHttpRequest(CancellationToken cancellationToken)
 		{
@@ -111,7 +113,7 @@ namespace akron
 				}
 				catch (SocketException ex)
 				{
-					logger.Log($"{ex.ErrorCode} : {ex.SocketErrorCode} : {ex.Source} : {ex.Message} : {ex}");
+					logger.Log($"{ex.ErrorCode} : {ex.SocketErrorCode} : {ex.Source} : {ex.Message} : {ex}",2);
 				}
 			}
 		}
@@ -129,9 +131,9 @@ namespace akron
 				";			
 				switch (akronDB.DBEngine.ParseSQL(sql))
 				{
-					case 0x1:SocketServer.logger.Log($"表名解析失败，请检查 SQL 语句格式是否正确", 1); break;
-					case 0x2:SocketServer.logger.Log($"表名已存在", 1);break;
-					case 0x3:break;//创建成功
+					case 0x1: break;
+					case 0x2:break;
+					case 0x0:break;
 					default:break;
 				}
 			}			
@@ -150,19 +152,20 @@ namespace akron
 			}
 			catch (SocketException ex)
 			{
-				logger.Log($"{ex.ErrorCode} : {ex.SocketErrorCode} : {ex.Source} : {ex.Message} : {ex}");
+				logger.Log($"{ex.ErrorCode} : {ex.SocketErrorCode} : {ex.Source} : {ex.Message} : {ex}",2);
 			}
 		}
-			/*   Timeout handle  2选1
-			*/
-			/*   //高开销
-			*/
-			/*   Socket.Poll(1000*2000, SelectMode.SelectRead); //wait 2s 
-			*/
-			/*   //会报异常
-			*/
-			/*   Socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout, 5000);
-			*/
+		/*   Timeout handle  2选1
+		*/
+		/*   //高开销
+		*/
+		/*   Socket.Poll(1000*2000, SelectMode.SelectRead); //wait 2s 
+		*/
+		/*   //会报异常
+		*/
+		/*   Socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout, 5000);
+		*/
+		
 		public static void AcceptRequest(TcpSocket tcpSocket)
 		{
 			/*   Author:Alrusix
@@ -191,6 +194,7 @@ namespace akron
 					case 0x2:
 						if (tcpSocket[^1].Headers.TryGetValue("Sec-WebSocket-Key", out string? _Key) && !string.IsNullOrEmpty(_Key))
 						{
+
 							MethodInfo? methodInfo = FindRouteHandlers<WebSocket>("ws");
 							if (methodInfo != null)
 							{
@@ -209,7 +213,7 @@ namespace akron
 			}
 			catch (SocketException ex)
 			{
-				logger.Log($"{ex.ErrorCode} : {ex.SocketErrorCode} : {ex.Source} : {ex.Message} : {ex}");
+				logger.Log($"{ex.ErrorCode} : {ex.SocketErrorCode} : {ex.Source} : {ex.Message} : {ex}",2);
 			}
 		}
 		private static int Parse(TcpSocket tcpSocket)
@@ -248,7 +252,7 @@ namespace akron
 			if (tcpSocket[^1].Headers.TryGetValue("Upgrade", out string? _Upgrade) &&
 				  tcpSocket[^1].Connection.Equals("Upgrade", StringComparison.OrdinalIgnoreCase) &&
 								  _Upgrade.Equals("websocket", StringComparison.OrdinalIgnoreCase)) return 0x2;
-			logger.Log($"{tcpSocket.IpAddress}:{tcpSocket[^1].Method}:{tcpSocket[^1].Url}");
+			logger.Log($"{tcpSocket.IpAddress}:{tcpSocket[^1].Method}:{tcpSocket[^1].Url}",0);
 			return 0x1;
 		}
 		//TODO  
@@ -275,7 +279,7 @@ namespace akron
 					filePath = Path.Combine(rootDirectory, tcpSocket[^1].Url.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
 					if (!Path.GetFullPath(filePath).StartsWith(rootDirectory, StringComparison.OrdinalIgnoreCase))
 					{
-						logger.Log("非法操作");
+						logger.Log($"{tcpSocket.IpAddress}试图访问{filePath}",1);
 						return;
 					}
 				}
@@ -310,7 +314,7 @@ namespace akron
 			}
 			catch (SocketException ex)
 			{
-				logger.Log($"{ex.ErrorCode} : {ex.SocketErrorCode} : {ex.Source} : {ex.Message} : {ex}");
+				logger.Log($"{ex.ErrorCode} : {ex.SocketErrorCode} : {ex.Source} : {ex.Message} : {ex}",2);
 			}
 		}
 		// 搁置
@@ -324,7 +328,7 @@ namespace akron
 			}
 			else
 			{
-				logger.Log($"POST Body: {tcpSocket[^1].Body}");
+				logger.Log($"{tcpSocket.IpAddress}POST Body: {tcpSocket[^1].Body}",0);
 				tcpSocket[^1].StatusCode = Config.Get<string>("StatusCode:Not Found", "404 Not Found");
 				SendResponse(tcpSocket);
 			}
@@ -397,7 +401,7 @@ namespace akron
 			}
 			catch (SocketException ex)
 			{
-				logger.Log($"{ex.ErrorCode} : {ex.SocketErrorCode} : {ex.Source} : {ex.Message} : {ex}");
+				logger.Log($"{ex.ErrorCode} : {ex.SocketErrorCode} : {ex.Source} : {ex.Message} : {ex}",2);
 				return false;
 			}
 		}
@@ -428,7 +432,7 @@ namespace akron
 		{			
 			cancellationTokenSource.Cancel();
 			listener.Close();
-			logger.Log("Server stopped gracefully.");
+			logger.Log("Server stopped gracefully.",0);
 		}
 	}
 }
