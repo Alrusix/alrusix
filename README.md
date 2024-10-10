@@ -1,7 +1,7 @@
 ## 轻量级http服务器
 
-[聊天室](https://alrusix.github.io/)
-
+### 实例
+请阅读[访问方法](https://github.com/Alrusix/alrusix.github.io)后进入[聊天室](https://alrusix.github.io/)
 ### TODO List
 
 - [x] HTTP1.1
