@@ -26,14 +26,11 @@ namespace akronLog
 			_writer = new StreamWriter(LogFilePath, true)
 			{
 				AutoFlush = false
-			};
-			
-			
+			};			
 			Task.Run(() => StartLogging());		
 		}
 		private void StartLogging()
-		{
-			
+		{		
 			while (_isLogging || !_logQueue.IsEmpty)
 			{
 				 _logSignal.WaitOne();
@@ -92,9 +89,9 @@ namespace akronLog
 		}
 		 void Debug(string message)
 		{
-			_logQueue.Enqueue($"Warning:{DateTime.Now:yyyy-MM-dd HH:mm:ss}: {message}");
-			_logSignal.Set();
-
+			//_logQueue.Enqueue($"Warning:{DateTime.Now:yyyy-MM-dd HH:mm:ss}: {message}");
+			//_logSignal.Set();
+			Console.WriteLine(message);
 		}
 	}
 }

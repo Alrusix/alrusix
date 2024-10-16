@@ -1,42 +1,37 @@
-﻿using System.Net.Sockets;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Sockets;
 using System.Net;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using System.Runtime.InteropServices;
-using System.Reflection;
-using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
+using System.Threading.Tasks;
+using System.Net.Security;
+using System.Threading;
 using akronLog;
 using akronConfig;
-using akronDB;
+using System.Collections.Concurrent;
+using System.Reflection;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
+using System.Net.Http;
 using akronWS;
-using System;
-using static System.Net.Mime.MediaTypeNames;
-using System.Net.NetworkInformation;
-using System.Threading;
-using System.Net.Security;
-using System.Security.Cryptography.X509Certificates;
-using System.Security.Authentication;
-using System.IO;
-/*   Author:Alrusix
-*/
-/*   正在实现：REST api
-*/
-/*   待实现:反向代理 负载均衡
-*/
-/*   无限期搁置:SSL/TLS   Http2/3  
-*/
+using static akron.HTTPS.WebSockets;
 namespace akron.HTTPS
 {
-	public class TcpSocket
+	public class TcpSockets
 	{
-		public Socket Socket;
+		public NetworkStream NetworkStream;
+		public TcpClient TCP_Client;
+		public SslStream SSL_Stream;
 		public readonly string IpAddress;
 		public readonly string Port;
 		public List<HttpRequest> Converse;
-		public TcpSocket(Socket socket, string _IpAddress, string _Port)
+		public TcpSockets(TcpClient client, NetworkStream networkStream, SslStream socket, string _IpAddress, string _Port)
 		{
-			Socket = socket;
+			NetworkStream = networkStream;
+			TCP_Client = client;
+			SSL_Stream = socket;
 			IpAddress = _IpAddress;
 			Port = _Port;
 			Converse = new List<HttpRequest>();
@@ -58,40 +53,13 @@ namespace akron.HTTPS
 			}
 		}
 	}
-	public class HttpRequest
-	{
-		public string Method { get; set; } = "Unkown";
-		public string Url { get; set; } = "Unkown";
-		public string HttpProtocol { get; set; } = "HTTP/1.1";
-		public Dictionary<string, string> Headers { get; set; } = [];
-		public string Connection { get; set; } = "close";
-		public string Body { get; set; } = "";
-		public string? QueryParameters { get; set; }
-		public DateTime LastdateTime { get; set; }
-		public string Content_Type { get; set; } = "application/octet-stream";
-		public string StatusCode { get; set; } = "Unkown";
-		public byte[] Content { get; set; } = [];
-	}
-	public class Cache
-	{
-		public byte[] Data { get; private set; }
-		public DateTime ExpiryTime { get; set; }
-		public string ContentType { get; set; }
-		public Cache(byte[] data, TimeSpan cacheDuration, string type)
-		{
-			Data = data;
-			ExpiryTime = DateTime.Now.Add(cacheDuration);
-			ContentType = type;
-		}
-		public bool IsValid() => DateTime.Now < ExpiryTime;
-	}
-	public class SocketServer
+	
+	public class Https
 	{
 		ConcurrentDictionary<string, Cache> cache = new();
-		Socket listener = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 		readonly string[] separator = ["\r\n"];
 
-		Log Logger { get; set; }
+		
 		Dictionary<string, string> MimeTypes { get; set; }
 		Dictionary<int, string> StatusCode { get; set; }
 		string DefaultContentType { get; set; }
@@ -99,12 +67,17 @@ namespace akron.HTTPS
 		ushort HttpPort { get; set; }
 		int Backlog { get; set; }
 		string HomePage { get; set; }
+		
+		TcpListener Httpslistener { get; set; }
+		X509Certificate2 Certificate { get; set; }
+		string CertPath { get; set; }
+		string PassWord { get; set; }
+		ushort Port { get; set; }
 		CancellationTokenSource cancellationTokenSource { get; set; }
-
+		Log Logger { get; set; }
 		#region SetSocket
-		public SocketServer()
-		{
-			HttpPort = 80;
+		public Https()
+		{		
 			Backlog = 20;
 			HomePage = "index.html";
 			DefaultContentType = "application/octet-stream";
@@ -119,12 +92,16 @@ namespace akron.HTTPS
 				{ 200, "200 OK" },
 				{ 404, "404 Not Found" }
 			};
-			Logger = new("akron.log");
+
+			Port = 443;
+			Logger = new("akronHttps.log");
 			cancellationTokenSource = new CancellationTokenSource();
+			
+			
 		}
-		public SocketServer(Config config) : this()
+		public Https(Config config) : this()
 		{
-			SetPort(config.Get<ushort>("Http:Listen"))
+			SetPort(config.Get<ushort>("Https:Listen"))
 									  .SetHomePage(config.Get<string>("Http:Index"))
 									  .SetLog(new(config.Get<string>("Log:Path")))
 									  .SetRootDirectory(config.Get<string>("Http:Root"))
@@ -136,82 +113,90 @@ namespace akron.HTTPS
 		/// <summary>
 		/// 指定可排队等待接受的传入连接数
 		/// </summary>
-		public SocketServer SetBacklog(int _backlog)
+		public Https SetBacklog(int _backlog)
 		{
-			Backlog = _backlog;
+			//Backlog = _backlog;
 			return this;
 		}
-
+		public Https SetCertPath(string _CertPath)
+		{
+			CertPath =  _CertPath;
+			return this;
+		}
+		public Https SetPassWord(string _PassWord)
+		{
+			PassWord = _PassWord;
+			return this;
+		}
 		/// <param name="_logger">日志文件不要设置为默认路径akron.log</param>
-		public SocketServer SetLog(Log _logger)
+		public Https SetLog(Log _logger)
 		{
 			Logger = _logger;
 			return this;
 		}
-		public SocketServer SetPort(ushort _Port)
+		public Https SetPort(ushort _Port)
 		{
-			HttpPort = _Port;
+			Port = _Port;
 			return this;
 		}
-		public SocketServer SetHomePage(string _HomePage)
+		public Https SetHomePage(string _HomePage)
 		{
 			HomePage = _HomePage;
 			return this;
 		}
-		public SocketServer SetRootDirectory(string _RootDirectory)
+		public Https SetRootDirectory(string _RootDirectory)
 		{
 			RootDirectory = _RootDirectory;
 			return this;
 		}
-		public SocketServer SetDefaultContentType(string _DefaultContentType)
+		public Https SetDefaultContentType(string _DefaultContentType)
 		{
 			DefaultContentType = _DefaultContentType;
 			return this;
 		}
-		public SocketServer SetCancellationTokenSource(CancellationTokenSource _cancellationTokenSource)
+		public Https SetCancellationTokenSource(CancellationTokenSource _cancellationTokenSource)
 		{
 			cancellationTokenSource = _cancellationTokenSource;
 			return this;
 		}
-		public SocketServer SetMimeTypes(Dictionary<string, string> _MimeTypes)
+		public Https SetMimeTypes(Dictionary<string, string> _MimeTypes)
 		{
 			MimeTypes = _MimeTypes;
 			return this;
 		}
-		public SocketServer SetStatusCode(Dictionary<int, string> _StatusCode)
+		public Https SetStatusCode(Dictionary<int, string> _StatusCode)
 		{
 			StatusCode = _StatusCode;
 			return this;
 		}
 		#endregion
-
-		public static WWW wWW = new WWW();
+		//聊天室
+		public static WWWs wWWs = new WWWs();
 		public void Listen()
 		{
 			try
 			{
-				listener.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-				listener.Bind(new IPEndPoint(IPAddress.Any, HttpPort));
-				listener.Listen(Backlog);
-				Task.Run(() => AcceptHttpRequest(cancellationTokenSource.Token));
-
-				wWW.Start();
+				wWWs.Start();
+				Httpslistener = new TcpListener(IPAddress.Any, Port);
+				Certificate = new X509Certificate2(CertPath, PassWord);
+				Httpslistener.Start();
+				_ = Task.Run(() => AcceptHttpsRequest(cancellationTokenSource.Token));
 			}
 			catch (SocketException e)
 			{
 				Logger.log($"Message:{e.Message}|SocketErrorCode:{e.SocketErrorCode}", 2);
 			}
 		}
-		async Task AcceptHttpRequest(CancellationToken cancellationToken)
+		async Task AcceptHttpsRequest(CancellationToken cancellationToken)
 		{
 			while (!cancellationToken.IsCancellationRequested)
 			{
 				try
 				{
-					//高负载下换成AcceptAsync(SocketAsyncEventArgs), 暂时搁置
-					Socket clientSocket = await listener.AcceptAsync(cancellationToken);
-					clientSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout, 120000);
-					_ = Task.Run(() => Filter(clientSocket, cancellationToken));
+					TcpClient client = await Httpslistener.AcceptTcpClientAsync();
+					client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout, 120000);
+					
+					_ = Task.Run(() => Filter(client));
 				}
 				catch (SocketException ex)
 				{
@@ -219,55 +204,42 @@ namespace akron.HTTPS
 				}
 			}
 		}
-
-		void Filter(Socket socket, CancellationToken cancellationToken)
+		async void Filter(TcpClient client)
 		{
 			//List<string> Blacklist = new List<string>();
 			//List<string> Whitelist = new List<string>();
-			string IpAddress = ((IPEndPoint)socket.RemoteEndPoint!).Address.ToString() ?? "unknown";
-			string Port = ((IPEndPoint)socket.RemoteEndPoint)?.Port.ToString() ?? "unknown";
+			string IpAddress = ((IPEndPoint)client.Client.RemoteEndPoint!).Address.ToString() ?? "unknown";
+			string Port = ((IPEndPoint)client.Client.RemoteEndPoint)?.Port.ToString() ?? "unknown";
 			//if (Blacklist.Contains(IpAddress))
 			//	return;
 			//if (!Whitelist.Contains(IpAddress))
 			//	return;
 			if (IpAddress.Equals("unknown") || Port.Equals("unknown"))
 				return;
-			_ = Task.Run(() => AcceptRequest(new TcpSocket(socket, IpAddress, Port)), cancellationToken);
-		}
-
-		void CloseSocket(TcpSocket tcpSocket)
-		{
-			try
-			{
-				tcpSocket.Socket.Shutdown(SocketShutdown.Both);
-				tcpSocket.Socket.Close();
-				foreach (var request in tcpSocket.Converse)
+			NetworkStream networkStream = client.GetStream();
+			SslStream sslStream = new SslStream(networkStream, false);
+			
+				try
 				{
-					string sqlQuery = $"INSERT INTO HttpLogs ( IPAdderss,Method , Url,LastdateTime,StatusCode) VALUES ({tcpSocket.IpAddress},{request.Method},{request.Url},{request.LastdateTime.ToString("G")},{request.StatusCode})";
-					Program.engine.ParseSQL(sqlQuery);
+					// 进行 SSL/TLS 握手，使用服务器证书
+					sslStream.AuthenticateAsServer(Certificate, clientCertificateRequired: false, checkCertificateRevocation: true);
+					
+					await Task.Run(() => AcceptRequest(new TcpSockets(client,networkStream, sslStream,IpAddress,Port)));
+					
 				}
-			}
-			catch (SocketException ex)
-			{
-				Logger.log($"{ex.ErrorCode} : {ex.SocketErrorCode} : {ex.Source} : {ex.Message} : {ex}", 2);
-			}
+				catch (Exception ex)
+				{
+					Logger.log("处理客户端连接时出错: " + ex.Message,2);
+					networkStream.Close();
+					sslStream.Close();				
+					client.Close();
+			}			
+						
 		}
-		/*   Timeout handle  2选1
-		*/
-		/*   //高开销
-		*/
-		/*   Socket.Poll(1000*2000, SelectMode.SelectRead); //wait 2s 
-		*/
-		/*   //会报异常
-		*/
-		/*   Socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout, 5000);
-		*/
-
-		public void AcceptRequest(TcpSocket tcpSocket)
+		public async void AcceptRequest(TcpSockets tcpSocket)
 		{
-		/*   Time:2024.9.10
-		*/
-		https://github.com/			
+			/*   Time:2024.10.16
+			*/	 https://github.com/			
 			/*	 //int keepAliveTimeoutSeconds = Config.Get<int>("Keep-aliveOutTime", 120);
 			*/   //while ((DateTime.Now - tcpSocket[^1].LastdateTime).Seconds < keepAliveTimeoutSeconds)
 			/*   //{
@@ -281,23 +253,24 @@ namespace akron.HTTPS
 				tcpSocket.Converse.Add(new HttpRequest());
 				switch (Parse(tcpSocket))
 				{
+					
 					case 0x0:
 						Logger.log($"{tcpSocket.IpAddress}close Socket");
 						break;
 					case 0x1:
 						RouteProces(tcpSocket);
 						if (tcpSocket[^1].Connection.Equals("keep-alive", StringComparison.OrdinalIgnoreCase))
-							while (tcpSocket.Socket.Poll(1000 * 20000, SelectMode.SelectRead)) goto https;
+							while (tcpSocket.TCP_Client.Client.Poll(1000 * 20000, SelectMode.SelectRead)) goto https;
 						break;
 					case 0x2:
 						if (tcpSocket[^1].Headers.TryGetValue("Sec-WebSocket-Key", out string? _Key) && !string.IsNullOrEmpty(_Key))
 						{
 
-							MethodInfo? methodInfo = FindRouteHandlers<WebSocket>("ws");
+							MethodInfo? methodInfo = FindRouteHandlers<WebSockets>("wss");
 							if (methodInfo != null)
-							{
-								_ = Task.Run(() => methodInfo.Invoke(null, new object?[] { tcpSocket.Socket, _Key }));
-								Logger.log($"{tcpSocket.IpAddress}:{tcpSocket[^1].Method}:WebSocket");
+							{								
+								Logger.log($"{tcpSocket.IpAddress}:{tcpSocket[^1].Method}:WebSockets");
+								_= Task.Run(() => methodInfo.Invoke(null, new object?[] { tcpSocket, _Key }));
 							}
 						}
 						return;
@@ -314,12 +287,34 @@ namespace akron.HTTPS
 				Logger.log($"{ex.ErrorCode} : {ex.SocketErrorCode} : {ex.Source} : {ex.Message} : {ex}", 2);
 			}
 		}
-		private int Parse(TcpSocket tcpSocket)
+		void CloseSocket(TcpSockets tcpSocket)
+		{
+			try
+			{
+				tcpSocket.NetworkStream.Close();
+				tcpSocket.SSL_Stream.Close();
+				//tcpSocket.TCP_Client.GetStream().Close();
+				tcpSocket.TCP_Client.Close();
+				
+				foreach (var request in tcpSocket.Converse)
+				{
+					string sqlQuery = $"INSERT INTO HttpsLogs ( IPAdderss,Method , Url,LastdateTime,StatusCode) VALUES ({tcpSocket.IpAddress},{request.Method},{request.Url},{request.LastdateTime.ToString("G")},{request.StatusCode})";
+					Program.engine.ParseSQL(sqlQuery);
+				}
+			}
+			catch (SocketException ex)
+			{
+				Logger.log($"{ex.ErrorCode} : {ex.SocketErrorCode} : {ex.Source} : {ex.Message} : {ex}", 2);
+			}
+		}
+		private int Parse(TcpSockets tcpSocket)
 		{
 			Span<byte> buffer = stackalloc byte[8192];
-			int bytesRead = tcpSocket.Socket.Receive(buffer);
+			int bytesRead = tcpSocket.SSL_Stream.Read(buffer);
+
 			if (bytesRead == 0) return 0x0;
 			string requestText = Encoding.UTF8.GetString(buffer.ToArray(), 0, bytesRead);
+		
 			tcpSocket[^1].LastdateTime = DateTime.Now;
 			Span<string> lines = requestText.Split(separator, StringSplitOptions.None);
 			Span<string> requestLineParts = lines[0].Split(' ');
@@ -367,10 +362,11 @@ namespace akron.HTTPS
 																   .ToArray()
 																   .FirstOrDefault();
 		//路由处理
-		public void RouteProces(TcpSocket tcpSocket)
+		public void RouteProces(TcpSockets tcpSocket)
 		{
 			try
 			{
+				
 				string filePath = Path.Combine(RootDirectory, HomePage);
 				if (tcpSocket[^1].Url != "/")
 				{
@@ -415,13 +411,13 @@ namespace akron.HTTPS
 			}
 		}
 		// 搁置
-		private void HandlePostRequest(TcpSocket tcpSocket)
+		private void HandlePostRequest(TcpSockets tcpSocket)
 		{
 
 			MethodInfo? methodInfo = FindRouteHandlers<HttpAPI>(tcpSocket[^1].Url);
 			if (methodInfo != null)
 			{
-				SendResponse(methodInfo.Invoke(null, [tcpSocket]) as TcpSocket);
+				SendResponse(methodInfo.Invoke(null, [tcpSocket]) as TcpSockets);
 			}
 			else
 			{
@@ -430,7 +426,7 @@ namespace akron.HTTPS
 				SendResponse(tcpSocket);
 			}
 		}
-		private void HandleGetRequest(TcpSocket tcpSocket, string filePath)
+		private void HandleGetRequest(TcpSockets tcpSocket, string filePath)
 		{
 			bool noCache = tcpSocket[^1].Connection.Equals("keep-alive", StringComparison.OrdinalIgnoreCase);
 			if (noCache && cache.TryGetValue(filePath, out Cache? cacheItem) && cacheItem.IsValid())
@@ -459,13 +455,14 @@ namespace akron.HTTPS
 				}
 				else
 				{
+					
 					tcpSocket[^1].StatusCode = StatusCode.TryGetValue(404, out string? _value) ? _value : "404 Not Found";
 					SendResponse(tcpSocket);
 				}
 			}
 		}
 		/// <returns>暂时搁置</returns>
-		public bool SendResponse(TcpSocket tcpSocket, string w = "")
+		public bool SendResponse(TcpSockets tcpSocket, string w = "")
 		{
 			try
 			{
@@ -487,11 +484,14 @@ namespace akron.HTTPS
 				$"Expires: {DateTime.UtcNow.AddHours(10):R}\r\n\r\n";
 
 				Span<byte> headerBytes = Encoding.UTF8.GetBytes(responseString);
-				if (tcpSocket.Socket.Poll(5000 * 1000, SelectMode.SelectWrite))
+				if (tcpSocket.TCP_Client.Client.Poll(5000 * 1000, SelectMode.SelectWrite))
 				{
-					tcpSocket.Socket.Send(headerBytes);
-					tcpSocket.Socket.Send(tcpSocket[^1].Content);
+					
 					//logger.Log($"等待下条消息,当前时间{DateTime.Now}\r\n");
+					tcpSocket.SSL_Stream.Write(headerBytes);
+					tcpSocket.SSL_Stream.Write(tcpSocket[^1].Content);
+					tcpSocket.SSL_Stream.Flush();
+
 					return true;
 				}
 				return false;
@@ -528,11 +528,9 @@ namespace akron.HTTPS
 		public void Stop()
 		{
 			cancellationTokenSource.Cancel();
-			listener.Close();
+			Httpslistener.Stop();
+
 			Logger.log("Server stopped gracefully.", 0);
 		}
 	}
 }
-
-
-

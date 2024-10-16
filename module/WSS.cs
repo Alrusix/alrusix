@@ -8,34 +8,54 @@ using System.Text;
 using System.Threading.Tasks;
 
 using static System.Net.Mime.MediaTypeNames;
-using static akron.HTTPS.SocketServer;
+using static akron.HTTPS.Https;
 using akronWS;
+using System.Net.Security;
+
 namespace akron.HTTPS
 {
-	public class WebSocket
-	{	
-		[Route("ws")]
-		public static void HandleHandshake(Socket clientSocket, string wsKey)
+	public class WebSockets
+	{
+		[Route("wss")]
+		public static void HandleHandshake(TcpSockets tcpSockets, string wsKey)
 		{
-			string response = "HTTP/1.1 101 Switching Protocols\r\n" +
-							  "Upgrade: websocket\r\n" +
-							  "Connection: Upgrade\r\n" +
-							  $"Sec-WebSocket-Accept: {Convert.ToBase64String(System.Security.Cryptography.SHA1.HashData(Encoding.UTF8.GetBytes(wsKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")))}\r\n\r\n";
-			clientSocket.Send(Encoding.UTF8.GetBytes(response));
-			HandleClient(clientSocket);
+			try
+			{
+				if (tcpSockets.SSL_Stream.CanWrite)
+				{
+					
+					string response = "HTTP/1.1 101 Switching Protocols\r\n" +
+									  "Upgrade: websocket\r\n" +
+									  "Connection: Upgrade\r\n" +
+									  $"Sec-WebSocket-Accept: {Convert.ToBase64String(System.Security.Cryptography.SHA1.HashData(Encoding.UTF8.GetBytes(wsKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")))}\r\n\r\n";
+					tcpSockets.SSL_Stream.Write(Encoding.UTF8.GetBytes(response));
+
+					tcpSockets.SSL_Stream.Flush();
+					
+					HandleClient(tcpSockets);
+				}
+				else
+				{
+					Console.WriteLine("sslstream not write");
+				}
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine($"{ex.ToString()}|{ex.Message}");
+			}
 		}
-		private static void HandleClient(Socket clientSocket)
+		private static void HandleClient(TcpSockets tcpSockets)
 		{
 			List<byte> messageBuffer = [];
 			int opcode = 0;
-			Span<byte> buffer = new byte[16 * 1024];
+			Span<byte> buffer = new byte[8 * 1024];
 			while (true)
 			{
 				try
 				{
-					int received = clientSocket.Receive(buffer);
+					int received = tcpSockets.SSL_Stream.Read(buffer);
 					if (received == 0) break;
-					int frameType = DecodeMessage(buffer.ToArray(), received, ref messageBuffer, ref opcode,clientSocket);
+					int frameType = DecodeMessage(buffer.ToArray(), received, ref messageBuffer, ref opcode, tcpSockets);
 					switch (frameType)
 					{
 						case 0x1:
@@ -44,8 +64,9 @@ namespace akron.HTTPS
 							messageBuffer.Clear();
 							opcode = 0;
 
-							string responseMessage = message+"\r\n";
-							clientSocket.Send(EncodeMessage(responseMessage, 0x1));
+							string responseMessage = message + "\r\n";
+							tcpSockets.SSL_Stream.Write(EncodeMessage(responseMessage, 0x1));
+							tcpSockets.SSL_Stream.Flush();
 							break;
 						//binary // 暂时搁置
 						case 0x2:
@@ -58,7 +79,8 @@ namespace akron.HTTPS
 						case 0x8: goto http;
 						case 0x9:
 							//ping
-							clientSocket.Send(EncodeMessage(string.Empty, 0xA));
+							tcpSockets.SSL_Stream.Write(EncodeMessage(string.Empty, 0xA));
+							tcpSockets.SSL_Stream.Flush();
 							break;
 						case 0xA:
 							//pong							
@@ -74,9 +96,11 @@ namespace akron.HTTPS
 					break;
 				}
 			}
-			http://google.com;
-			////logger.Log("Client disconnected.");
-			clientSocket.Close();
+		http://google.com;
+			 ////logger.Log("Client disconnected.");
+			tcpSockets.TCP_Client.GetStream().Close();
+			tcpSockets.TCP_Client.Close();
+			tcpSockets.SSL_Stream.Close();
 		}
 		// 0               1               2               3
 		// 1 2 3 4 5 6 7 8 1 2 3 4 5 6 7 8 1 2 3 4 5 6 7 8 1 2 3 4 5 6 7 8
@@ -109,9 +133,9 @@ namespace akron.HTTPS
 			public byte RSV3;
 		}
 
-		private static int DecodeMessage(byte[] buffer, int length, ref List<byte> message, ref int _opcode,Socket socket)
+		private static int DecodeMessage(byte[] buffer, int length, ref List<byte> message, ref int _opcode, TcpSockets tcpSockets)
 		{
-			
+
 			bool isFinalFrame = (buffer[0] & 0x80) != 0;
 			byte opCode = (byte)(buffer[0] & 0x0F);
 			switch (opCode)
@@ -123,13 +147,13 @@ namespace akron.HTTPS
 				case 0x2: // 二进制帧
 					break;
 				case 0x8: // 关闭帧
-					////logger.Log("Received close frame from server.");
+						  ////logger.Log("Received close frame from server.");
 					return 0x8;
 				case 0x9: // Ping 帧
-					////logger.Log("Received ping frame.");
+						  ////logger.Log("Received ping frame.");
 					return 0x9;
 				case 0xA: // Pong 帧
-					////logger.Log("Received pong frame.");
+						  ////logger.Log("Received pong frame.");
 					return 0xA;
 				default:
 					return -1;
@@ -138,7 +162,7 @@ namespace akron.HTTPS
 			bool isMasked = (buffer[1] & 0x80) != 0;
 			int payloadLength = buffer[1] & 0x7F;
 			int offset = 2;
-			
+
 			if (payloadLength == 126)
 			{
 				if (length < offset + 2)
@@ -196,10 +220,11 @@ namespace akron.HTTPS
 			//暂时搁置，原路返回
 			string Text = Encoding.UTF8.GetString(payloadData);
 			var w = Text.Split("=");
-			if (w.Length== 2 && w[0] == "name")
+			if (w.Length == 2 && w[0] == "name")
 			{
+
+				wWWs.AddUser(tcpSockets);
 				
-				wWW.ss(socket);
 				return 0xFF;
 			}
 			else

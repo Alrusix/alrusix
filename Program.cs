@@ -2,7 +2,7 @@
 using akronConfig;
 using System.Collections.Concurrent;
 using akronDB;
-using akron.module;
+using akron.HTTPS;
 using System.Text;
 namespace akron
 {
@@ -22,20 +22,27 @@ namespace akron
 		              Message System.String,
 					  Time System.DateTime
 				);
-				 CREATE TABLE SocketLogs (
+				 CREATE TABLE HttpLogs (
 					  IPAdderss System.String,
 		              Method System.String,
 		              Url System.String,
 		              LastdateTime System.DateTime,
-		              StatusCode System.String	);";
+		              StatusCode System.String	);
+				CREATE TABLE HttpsLogs (
+					  IPAdderss System.String,
+		              Method System.String,
+		              Url System.String,
+		              LastdateTime System.DateTime,
+		              StatusCode System.String	);"";";
 			Program.engine.ParseSQL(sql);
-						
+
 			//使用默认配置
-			//var s = new SocketServer();
+			var a = new SocketServer();
+			a.Listen();
 			//使用配置文件配置
-			//var s = new SocketServer(config);
+			//var b = new SocketServer(config);
 			//手动配置某项  
-			var s = new SocketServer().SetPort(config.Get<ushort>("Server:Listen"))
+			/*  var c = new SocketServer().SetPort(80)
 									  .SetHomePage(config.Get<string>("Http:Index"))
 									  .SetLog(new(config.Get<string>("Log:Path")))
 									  .SetRootDirectory(config.Get<string>("Http:Root"))
@@ -43,8 +50,11 @@ namespace akron
 									  .SetMimeTypes(config.GetMimeTypes())
 									  .SetStatusCode(config.GetStatusCode())
 									  .SetLog(new akronLog.Log("test.log"));
+				c.Listen();
+			 */
 
-			s.Listen();
+			var d = new Https().SetPassWord(config.Get<string>("Https:PassWord", "Your_PassWord")).SetCertPath(config.Get<string>("Https:CertPath", "./Your_Cert.pfx"));
+			d.Listen();
 
 			UI.Start();
 		}

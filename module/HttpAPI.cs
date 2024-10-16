@@ -5,10 +5,10 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
-using static akron.SocketServer;
+using static akron.HTTPS.SocketServer;
 using akronDB;
 
-namespace akron.module
+namespace akron.HTTPS
 {
 	//暂时搁置
 	internal class HttpAPI

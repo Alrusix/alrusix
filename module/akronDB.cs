@@ -6,7 +6,7 @@ using akronConfig;
 using System.IO.MemoryMappedFiles;
 using System.Text.Json;
 using akron;
-using akron.module;
+using akron.HTTPS;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Diagnostics.Metrics;
@@ -41,7 +41,7 @@ namespace akronDB
 
 	public class DBEngine
 	{
-		//public static DBEngine engine { get; set; }
+
 		Config config { get; set; } 
 		Log logger { get; set; } 
 		string DBPath { get; set; }
@@ -656,6 +656,11 @@ namespace akronDB
 		//		Console.ForegroundColor = ConsoleColor.White;
 		//	}
 		//}
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <param name="head"></param>
+		/// <param name="tableData"></param>
 		void ShowTable(string[] head, List<Dictionary<string, object?>> tableData)
 		{
 			if (tableData.Count > 0)
